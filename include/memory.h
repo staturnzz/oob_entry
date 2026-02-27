@@ -20,7 +20,6 @@ extern kern_return_t task_get_special_port(task_t, int, mach_port_t *);
 
 uint8_t *map_data(uint32_t pa, uint32_t size, vm_prot_t prot);
 uint8_t *map_relative_data(uint32_t offset, uint32_t size, vm_prot_t prot);
-uint8_t *map_relative_data64(uint64_t offset, uint64_t size, vm_prot_t prot);
 void unmap_data(uint8_t *addr, uint32_t size);
 void sync_mapping(uint8_t *addr, uint32_t size);
 void physread_buf(uint32_t addr, void *data, uint32_t size);

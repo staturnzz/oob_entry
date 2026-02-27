@@ -17,13 +17,6 @@ uint8_t *map_relative_data(uint32_t offset, uint32_t size, vm_prot_t prot) {
     return (uint8_t *)mapped;
 }
 
-uint8_t *map_relative_data64(uint64_t offset, uint64_t size, vm_prot_t prot) {
-    mach_vm_address_t mapped = 0;
-    if (mach_vm_map(mach_task_self(), &mapped, size, 0, VM_FLAGS_NO_CACHE|VM_FLAGS_ANYWHERE, kinfo->oob_entry, offset, 0, prot, prot, 0) != 0) return NULL;
-    mem_sync();
-    return (uint8_t *)mapped;
-}
-
 void sync_mapping(uint8_t *addr, uint32_t size) {
     mem_barrier();
     mach_vm_msync(mach_task_self(), (mach_vm_address_t)addr, (mach_vm_size_t)size, VM_SYNC_INVALIDATE|VM_SYNC_SYNCHRONOUS);
