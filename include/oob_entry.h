@@ -25,16 +25,13 @@ typedef struct {
     uint32_t kernel_phys_base;
     uint32_t kern_data_pa;
     uint32_t kern_data_size;
-    mach_port_t host_priv;
     mach_port_t main_entry;
     mach_port_t oob_entry;
     uint32_t mapping_base;
     uint32_t mem_base;
     uint32_t mem_size;
-    uint32_t addr_mask;
     mach_port_t tfp0;
     uint32_t version[3];
-
     struct {
         struct {
             int ref_count;    
