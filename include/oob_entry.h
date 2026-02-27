@@ -3,26 +3,29 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <unistd.h>
 #include <mach/mach.h>
 #include <mach-o/loader.h>
 #include <mach/task.h>
 #include <mach/mach_init.h>
 #include <sys/resource.h>
+#include <sys/mman.h>
 
 typedef struct {
-    uint32_t self_port_addr;
     uint32_t self_proc_addr;
     uint32_t self_task_addr;
     uint32_t kern_port_addr;
     uint32_t kern_proc_addr;
     uint32_t kern_task_addr;
     uint32_t kern_tte_phys;
-    uint32_t host_port_addr;
     uint32_t kernel_slide;
     uint32_t kernel_base;
     uint32_t kernel_static_base;
     uint32_t kernel_phys_base;
+    uint32_t kern_data_pa;
+    uint32_t kern_data_size;
+    mach_port_t host_priv;
     mach_port_t main_entry;
     mach_port_t oob_entry;
     uint32_t mapping_base;
@@ -31,21 +34,28 @@ typedef struct {
     uint32_t addr_mask;
     mach_port_t tfp0;
     uint32_t version[3];
+
     struct {
         struct {
-            int ref_count;
-            int bsd_info;
-        } task;        
+            int ref_count;    
+            int itk_self;
+            int itk_seatbelt;
+        } task;
+        struct {
+            int next;
+            int pid;
+            int task;
+            int lock_type;
+            int p_stat;
+        } proc;
         struct {
             int ip_references;
-            int ip_kobject;
-            int size;
         } ipc_port;
     } offsets;
 } kinfo_t;
 
 extern kinfo_t *kinfo;
 
-int run_exploit(void);
+int run_oob_entry(bool enable_tfp0);
 
 #endif /* oob_entry_h */
