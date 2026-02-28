@@ -30,8 +30,7 @@ void sync_mapping(uint8_t *addr, uint32_t size) {
 }
 
 bool valid_pa(uint32_t pa) {
-    if ((pa & kinfo->mem_base) != kinfo->mem_base) return false;
-    if (pa > (kinfo->mem_base + kinfo->mem_size)) return false;
+    if (pa < kinfo->mapping_base || pa > (kinfo->mem_base + kinfo->mem_size)) return false;
     return (((pa >> 16) & 0xffff) != 0xdead);
 }
 
