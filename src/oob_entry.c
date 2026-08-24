@@ -14,23 +14,44 @@ int create_oob_entry(void) {
     if (kinfo->version[0] <= 7) {
         const char *list[] = {
             "AppleCLCD", "AppleM2CLCD", "AppleH1CLCD", "AppleMobileCLCD",
-            "AppleRGBOUT", "AppleH1TVOut", "AppleRGBOUT", "AppleM2TVOut",
+            "AppleRGBOUT", "AppleH1TVOut", "AppleM2TVOut",
             "AppleMX31IPU", "ApplePinotLCD", NULL
         };
 
         mach_port_t service = MACH_PORT_NULL;
         mach_port_t client = MACH_PORT_NULL;
+        const char *matched = NULL;
         for (uint32_t i = 0; list[i] != NULL; i++) {
             service = IOServiceGetMatchingService(0, IOServiceMatching(list[i]));
-            if (MACH_PORT_VALID(service)) break;
+            if (MACH_PORT_VALID(service)) {
+                matched = list[i];
+                break;
+            }
         }
 
         if (!MACH_PORT_VALID(service)) return -1;
-        IOMobileFramebufferOpen(service, mach_task_self(), 0, &client);
 
-        if (!MACH_PORT_VALID(client)) return -1;
-        IOMobileFramebufferGetLayerDefaultSurface(client, 0, &surface);
-        if (surface == NULL) return -1;
+        if (strcmp(matched, "AppleRGBOUT") == 0) {
+            CFMutableDictionaryRef dict = CFDictionaryCreateMutable(NULL, 0, NULL, NULL);
+            CFDictionarySetValue(dict, CFSTR("IOSurfacePixelFormat"), CFNUM((int)'ARGB'));
+            CFDictionarySetValue(dict, CFSTR("IOSurfaceWidth"), CFNUM(32));
+            CFDictionarySetValue(dict, CFSTR("IOSurfaceHeight"), CFNUM(32));
+            CFDictionarySetValue(dict, CFSTR("IOSurfaceBufferTileMode"), kCFBooleanFalse);
+            CFDictionarySetValue(dict, CFSTR("IOSurfaceBytesPerRow"), CFNUM(128));
+            CFDictionarySetValue(dict, CFSTR("IOSurfaceBytesPerElement"), CFNUM(4));
+            CFDictionarySetValue(dict, CFSTR("IOSurfaceAllocSize"), CFNUM(0x20000));
+            CFDictionarySetValue(dict, CFSTR("IOSurfaceMemoryRegion"), CFSTR("PurpleGfxMem"));
+            CFDictionarySetValue(dict, CFSTR("IOSurfaceIsGlobal"), kCFBooleanTrue);
+            
+            surface = IOSurfaceCreate(dict);
+            CFRelease(dict);
+            if (surface == NULL) return -1;
+        } else {
+            IOMobileFramebufferOpen(service, mach_task_self(), 0, &client);
+            if (!MACH_PORT_VALID(client)) return -1;
+            IOMobileFramebufferGetLayerDefaultSurface(client, 0, &surface);
+            if (surface == NULL) return -1;
+        }
     } else {
         CFMutableDictionaryRef dict = CFDictionaryCreateMutable(NULL, 0, NULL, NULL);
         CFDictionarySetValue(dict, CFSTR("IOSurfacePixelFormat"), CFNUM((int)'ARGB'));
